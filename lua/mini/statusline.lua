@@ -541,6 +541,9 @@ H.create_autocommands = function()
   au('DiagnosticChanged', '*', track_diagnostics, 'Track diagnostics')
 
   au('ColorScheme', '*', H.create_default_hl, 'Ensure colors')
+  au({ 'BufReadPost', 'BufWritePost' }, '*', function(data)
+    H.update_jujutsu_change_id(data.buf)
+  end, 'Update Jujutsu change ID')
 end
 
 --stylua: ignore
@@ -628,17 +631,22 @@ end
 H.default_content_inactive = function() return '%#MiniStatuslineInactive#%F%=' end
 
 -- Jujutsu VCS ---------------------------------------------------------------
-H.get_jujutsu_change_id = function()
-  -- Try to get change ID from jj command
-  local handle = io.popen('jj log -r @ --template "{change_id.short()}"')
-  if handle == nil then return nil end
+H.jujutsu_change_id = {}
 
-  local result = handle:read('*a')
+H.get_jujutsu_change_id = function()
+  local buf_id = vim.api.nvim_get_current_buf()
+  return H.jujutsu_change_id[buf_id] or ''
+end
+
+H.update_jujutsu_change_id = function(buf_id)
+  local handle = io.popen('jj log -r @ --template "{change_id.short()}" 2>/dev/null')
+  if handle == nil then return end
+
+  local result = handle:read('*a'):gsub('^%s+', ''):gsub('%s+$', '')
   handle:close()
 
-  -- Return nil if empty, otherwise trim whitespace
-  if result == nil or result == '' then return nil end
-  return result:gsub('^%s+', ''):gsub('%s+$', '')
+  H.jujutsu_change_id[buf_id] = result ~= '' and result or nil
+  vim.cmd('redrawstatus')
 end
 
 -- LSP ------------------------------------------------------------------------
