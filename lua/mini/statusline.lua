@@ -250,6 +250,25 @@ MiniStatusline.section_mode = function(args)
   return mode, mode_info.hl
 end
 
+--- Section for Jujutsu VCS information
+---
+--- Shows the current change ID from a Jujutsu repository.
+--- Returns empty string if not in a Jujutsu repo or if truncated.
+---
+---@param args __statusline_args Use `args.icon` to supply your own icon.
+---
+---@return __statusline_section
+MiniStatusline.section_jujutsu = function(args)
+  if MiniStatusline.is_truncated(args.trunc_width) then return '' end
+
+  local change_id = H.get_jujutsu_change_id()
+  if change_id == nil or change_id == '' then return '' end
+
+  local use_icons = H.use_icons or H.get_config().use_icons
+  local icon = args.icon or (use_icons and '' or 'Jj')
+  return icon .. ' ' .. change_id
+end
+
 --- Section for Git information
 ---
 --- Shows Git summary from |mini.git| (should be set up; recommended). To tweak
@@ -585,6 +604,7 @@ H.default_content_active = function()
   H.use_icons = H.get_config().use_icons
   local mode, mode_hl = MiniStatusline.section_mode({ trunc_width = 120 })
   local git           = MiniStatusline.section_git({ trunc_width = 40 })
+  local jujutsu       = MiniStatusline.section_jujutsu({ trunc_width = 40 })
   local diff          = MiniStatusline.section_diff({ trunc_width = 75 })
   local diagnostics   = MiniStatusline.section_diagnostics({ trunc_width = 75 })
   local lsp           = MiniStatusline.section_lsp({ trunc_width = 75 })
@@ -594,12 +614,9 @@ H.default_content_active = function()
   local search        = MiniStatusline.section_searchcount({ trunc_width = 75 })
   H.use_icons = nil
 
-  -- Usage of `MiniStatusline.combine_groups()` ensures highlighting and
-  -- correct padding with spaces between groups (accounts for 'missing'
-  -- sections, etc.)
   return MiniStatusline.combine_groups({
     { hl = mode_hl,                  strings = { mode } },
-    { hl = 'MiniStatuslineDevinfo',  strings = { git, diff, diagnostics, lsp } },
+    { hl = 'MiniStatuslineDevinfo',  strings = { git, jujutsu, diff, diagnostics, lsp } },
     '%<', -- Mark general truncate point
     { hl = 'MiniStatuslineFilename', strings = { filename } },
     '%=', -- End left alignment
@@ -609,6 +626,20 @@ H.default_content_active = function()
 end
 
 H.default_content_inactive = function() return '%#MiniStatuslineInactive#%F%=' end
+
+-- Jujutsu VCS ---------------------------------------------------------------
+H.get_jujutsu_change_id = function()
+  -- Try to get change ID from jj command
+  local handle = io.popen('jj log -r @ --template "{change_id.short()}"')
+  if handle == nil then return nil end
+
+  local result = handle:read('*a')
+  handle:close()
+
+  -- Return nil if empty, otherwise trim whitespace
+  if result == nil or result == '' then return nil end
+  return result:gsub('^%s+', ''):gsub('%s+$', '')
+end
 
 -- LSP ------------------------------------------------------------------------
 H.compute_attached_lsp = function(buf_id) return string.rep('+', vim.tbl_count(H.get_buf_lsp_clients(buf_id))) end
